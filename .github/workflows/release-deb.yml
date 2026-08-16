@@ -17,6 +17,13 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    # Debian 13 (trixie) is used instead of the ubuntu-24.04 runner's own
+    # apt packages because Ubuntu 24.04 only ships blueprint-compiler
+    # 0.12.0, while Ghostty requires >=0.16.0 (available as 0.16.0-3 in
+    # trixie). This matches the Debian 13 image already validated by the
+    # test-debian-13 job in test.yml.
+    container:
+      image: docker.io/library/debian:13
     timeout-minutes: 90
     steps:
       - name: Validate version input
@@ -28,6 +35,11 @@ jobs:
           fi
 
           echo "Version is valid: ${{ github.event.inputs.version }}"
+
+      - name: Install git
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates
 
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,10 +61,12 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential \
             blueprint-compiler \
+            curl \
+            gettext \
             libxml2-utils \
             pandoc \
             libadwaita-1-dev \
@@ -67,7 +81,7 @@ jobs:
           curl -fsSL \
             "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_amd64.deb" \
             -o nfpm.deb
-          sudo apt-get install -y ./nfpm.deb
+          apt-get install -y ./nfpm.deb
           nfpm --version
 
       - name: Build and stage install
@@ -76,6 +90,7 @@ jobs:
             --prefix /usr \
             -Doptimize=ReleaseFast \
             -Dcpu=baseline \
+            -Dtarget=x86_64-linux-gnu.2.35 \
             -Dversion-string="${GHOSTTY_VERSION}" \
             -fno-sys=gtk4-layer-shell
 
