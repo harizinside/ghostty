@@ -1,0 +1,23 @@
+name: ghostty
+arch: amd64
+platform: linux
+version: ${GHOSTTY_VERSION}
+section: x11
+priority: optional
+maintainer: harizinside <harizinside@users.noreply.github.com>
+description: |
+  Ghostty is a fast, feature-rich, and cross-platform terminal emulator that
+  uses platform-native UI and GPU acceleration.
+homepage: https://ghostty.org
+license: MIT
+depends:
+  - libgtk-4-1
+  - libadwaita-1-0
+scripts:
+  postinstall: dist/linux/deb-postinstall.sh
+  postremove: dist/linux/deb-postremove.sh
+contents:
+  - src: ${STAGE_DIR}/usr/
+    dst: /usr
+    type: tree
+    expand: true

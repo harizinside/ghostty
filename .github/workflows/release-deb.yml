@@ -1,0 +1,102 @@
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to package (format: vX.Y.Z)"
+        required: true
+
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+name: Release Deb
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Validate version input
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [[ ! "${{ github.event.inputs.version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Version must follow the format vX.Y.Z (e.g., v1.0.0)."
+            exit 1
+          fi
+
+          echo "Version is valid: ${{ github.event.inputs.version }}"
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Derive version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=${{ github.event.inputs.version }}
+            VERSION=${VERSION#v}
+          fi
+          echo "GHOSTTY_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential \
+            blueprint-compiler \
+            libxml2-utils \
+            pandoc \
+            libadwaita-1-dev \
+            libgtk-4-dev \
+            libbz2-dev \
+            libonig-dev
+
+      - name: Install nfpm
+        env:
+          NFPM_VERSION: 2.47.0
+        run: |
+          curl -fsSL \
+            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_amd64.deb" \
+            -o nfpm.deb
+          sudo apt-get install -y ./nfpm.deb
+          nfpm --version
+
+      - name: Build and stage install
+        run: |
+          DESTDIR="$PWD/stage" zig build \
+            --prefix /usr \
+            -Doptimize=ReleaseFast \
+            -Dcpu=baseline \
+            -Dversion-string="${GHOSTTY_VERSION}" \
+            -fno-sys=gtk4-layer-shell
+
+      - name: Package .deb
+        env:
+          STAGE_DIR: ${{ github.workspace }}/stage
+        run: |
+          nfpm package \
+            --packager deb \
+            --config dist/linux/nfpm.yaml \
+            --target "ghostty_${GHOSTTY_VERSION}_amd64.deb"
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ghostty-deb
+          path: ghostty_${{ steps.version.outputs.version }}_amd64.deb
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: ghostty_${{ steps.version.outputs.version }}_amd64.deb
