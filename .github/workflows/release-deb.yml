@@ -17,17 +17,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    # Debian 13 (trixie) is used instead of the ubuntu-24.04 runner's own
-    # apt packages because Ubuntu 24.04 only ships blueprint-compiler
-    # 0.12.0, while Ghostty requires >=0.16.0 (available as 0.16.0-3 in
-    # trixie). This matches the Debian 13 image already validated by the
-    # test-debian-13 job in test.yml.
-    container:
-      image: docker.io/library/debian:13
     timeout-minutes: 90
-    defaults:
-      run:
-        shell: bash
     steps:
       - name: Validate version input
         if: github.event_name == 'workflow_dispatch'
@@ -38,13 +28,6 @@ jobs:
           fi
 
           echo "Version is valid: ${{ github.event.inputs.version }}"
-
-      - name: Install base tools
-        shell: sh
-        run: |
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            bash git ca-certificates xz-utils
 
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,10 +49,9 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential \
-            blueprint-compiler \
             curl \
             gettext \
             libxml2-utils \
@@ -79,6 +61,15 @@ jobs:
             libbz2-dev \
             libonig-dev
 
+      - name: Install blueprint-compiler
+        # Ubuntu 24.04's apt only ships blueprint-compiler 0.12.0, but
+        # Ghostty requires >=0.16.0. The snap package tracks upstream
+        # releases (0.16.0) and GitHub-hosted Ubuntu runners ship snapd
+        # preinstalled.
+        run: |
+          sudo snap install blueprint-compiler --classic
+          echo "/snap/bin" >> "$GITHUB_PATH"
+
       - name: Install nfpm
         env:
           NFPM_VERSION: 2.47.0
@@ -86,7 +77,7 @@ jobs:
           curl -fsSL \
             "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_amd64.deb" \
             -o nfpm.deb
-          apt-get install -y ./nfpm.deb
+          sudo apt-get install -y ./nfpm.deb
           nfpm --version
 
       - name: Build and stage install
@@ -95,7 +86,6 @@ jobs:
             --prefix /usr \
             -Doptimize=ReleaseFast \
             -Dcpu=baseline \
-            -Dtarget=x86_64-linux-gnu.2.35 \
             -Dversion-string="${GHOSTTY_VERSION}" \
             -fno-sys=gtk4-layer-shell
 
