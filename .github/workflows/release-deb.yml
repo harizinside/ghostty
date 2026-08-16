@@ -36,10 +36,11 @@ jobs:
 
           echo "Version is valid: ${{ github.event.inputs.version }}"
 
-      - name: Install git
+      - name: Install base tools
         run: |
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            git ca-certificates xz-utils
 
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
